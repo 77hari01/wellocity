@@ -24,9 +24,9 @@ export default function MedicareBookingSystem() {
     reason: ''
   });
 
-  // API Configuration - Update these to match your backend
+  // ✅ CRITICAL: Update these settings
   const API_BASE_URL = 'https://appointment-zwn3.onrender.com/api';
-  const API_KEY = 'API_KEY=HealyBot'; // Match this with API_KEY in your .env file
+  const API_KEY = 'API_KEY=HealyBot';
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -60,72 +60,132 @@ export default function MedicareBookingSystem() {
     }
   ];
 
+  // ✅ FIXED: Enhanced error handling
   const fetchSpecialties = async () => {
     try {
+      console.log('🔍 Fetching specialties from:', `${API_BASE_URL}/specialties`);
+      
       const response = await fetch(`${API_BASE_URL}/specialties`);
+      
+      console.log('📡 Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
-      setSpecialties(data.specialties || []);
+      console.log('✅ Specialties received:', data);
+      
+      if (data.specialties && Array.isArray(data.specialties)) {
+        setSpecialties(data.specialties);
+      } else {
+        console.warn('⚠️ No specialties in response, using fallback');
+        setSpecialties(['Cardiology', 'Neurology', 'Orthopedics', 'Pediatrics', 'Dermatology', 'Gynecology', 'Ophthalmology', 'ENT', 'Dentistry', 'Psychiatry', 'Urology', 'Gastroenterology']);
+      }
     } catch (err) {
-      console.error('Error fetching specialties:', err);
+      console.error('❌ Error fetching specialties:', err);
+      // Fallback specialties
       setSpecialties(['Cardiology', 'Neurology', 'Orthopedics', 'Pediatrics', 'Dermatology', 'Gynecology', 'Ophthalmology', 'ENT', 'Dentistry', 'Psychiatry', 'Urology', 'Gastroenterology']);
     }
   };
 
+  // ✅ FIXED: Better error handling and logging
   const searchDoctorsBySpecialty = async (specialty) => {
     setLoading(true);
     setError('');
+    setDoctors([]);
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/doctors/specialty/${specialty}`);
-      const data = await response.json();
+      console.log('🔍 Searching doctors for specialty:', specialty);
       
-      if (response.ok) {
-        setDoctors(data.doctors || []);
+      const url = `${API_BASE_URL}/doctors/specialty/${encodeURIComponent(specialty)}`;
+      console.log('📡 Fetching from:', url);
+      
+      const response = await fetch(url);
+      console.log('📡 Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('📦 Response data:', data);
+      
+      if (response.ok && data.doctors && data.doctors.length > 0) {
+        console.log('✅ Doctors found:', data.doctors.length);
+        setDoctors(data.doctors);
         setSelectedSpecialty(specialty);
         setCurrentView('search');
       } else {
-        setError(data.error || 'No doctors found');
+        const errorMsg = data.error || 'No doctors found for this specialty';
+        console.warn('⚠️', errorMsg);
+        setError(errorMsg);
         setDoctors([]);
+        // Still show search view even with no results
+        setSelectedSpecialty(specialty);
+        setCurrentView('search');
       }
     } catch (err) {
-      setError('Failed to fetch doctors. Please try again.');
-      console.error('Error:', err);
+      console.error('❌ Error searching doctors:', err);
+      setError(`Failed to fetch doctors: ${err.message}`);
+      setDoctors([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ FIXED: Enhanced availability checking
   const checkDoctorAvailability = async (doctorId, date) => {
     setLoading(true);
     setError('');
+    setAvailableSlots([]);
+    
     try {
+      console.log('🔍 Checking availability for:', { doctorId, date });
+      
       const response = await fetch(`${API_BASE_URL}/doctors/${doctorId}/availability`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ date })
       });
       
+      console.log('📡 Availability response status:', response.status);
+      
       const data = await response.json();
+      console.log('📦 Availability data:', data);
       
       if (response.ok) {
-        setAvailableSlots(data.availableSlots || []);
-        if (data.availableSlots.length === 0) {
-          setError('No available slots for this date');
+        if (data.availableSlots && data.availableSlots.length > 0) {
+          console.log('✅ Available slots:', data.availableSlots.length);
+          setAvailableSlots(data.availableSlots);
+        } else {
+          console.warn('⚠️ No available slots for this date');
+          setError('No available slots for this date. Please try another date.');
+          setAvailableSlots([]);
         }
       } else {
-        setError(data.error || 'Failed to check availability');
+        const errorMsg = data.error || 'Failed to check availability';
+        console.error('❌ Availability error:', errorMsg);
+        setError(errorMsg);
         setAvailableSlots([]);
       }
     } catch (err) {
-      setError('Failed to check availability. Please try again.');
-      console.error('Error:', err);
+      console.error('❌ Error checking availability:', err);
+      setError(`Failed to check availability: ${err.message}`);
+      setAvailableSlots([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ FIXED: Complete booking with proper validation
   const bookAppointment = async () => {
+    // Validation
     if (!patientData.name || !patientData.email || !patientData.phone) {
-      setError('Please fill in all required fields');
+      setError('Please fill in all required fields (Name, Email, Phone)');
+      return;
+    }
+
+    if (!selectedSlot) {
+      setError('Please select a time slot');
       return;
     }
 
@@ -134,6 +194,18 @@ export default function MedicareBookingSystem() {
     setSuccess('');
 
     try {
+      console.log('📤 Booking appointment with data:', {
+        doctorId: selectedDoctor.doctorId,
+        doctorName: selectedDoctor.name,
+        doctorSpecialty: selectedDoctor.specialty,
+        patientName: patientData.name,
+        patientEmail: patientData.email,
+        patientPhone: patientData.phone,
+        date: selectedDate,
+        timeSlot: selectedSlot.time,
+        reason: patientData.reason
+      });
+
       const response = await fetch(`${API_BASE_URL}/appointments/book`, {
         method: 'POST',
         headers: {
@@ -154,51 +226,91 @@ export default function MedicareBookingSystem() {
         })
       });
 
+      console.log('📡 Booking response status:', response.status);
+      
       const data = await response.json();
+      console.log('📦 Booking response data:', data);
 
-      if (response.ok) {
-        setSuccess(`🎉 Appointment booked successfully! ID: ${data.appointment.appointmentId}`);
+      if (response.ok && data.success) {
+        const appointmentId = data.appointment?.appointmentId || 'N/A';
+        setSuccess(`🎉 Appointment booked successfully! Appointment ID: ${appointmentId}`);
+        
+        // Clear form
         setPatientData({ name: '', email: '', phone: '', reason: '' });
-        setSelectedDoctor(null);
         setSelectedSlot(null);
         setAvailableSlots([]);
         
+        // Redirect to home after 3 seconds
         setTimeout(() => {
           setCurrentView('home');
           setSuccess('');
+          setSelectedDoctor(null);
         }, 3000);
       } else {
-        setError(data.error || 'Failed to book appointment');
+        const errorMsg = data.error || 'Failed to book appointment';
+        console.error('❌ Booking failed:', errorMsg);
+        setError(errorMsg);
       }
     } catch (err) {
-      setError('Failed to book appointment. Please try again.');
-      console.error('Error:', err);
+      console.error('❌ Booking error:', err);
+      setError(`Failed to book appointment: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ FIXED: Fetch user appointments
   const fetchUserAppointments = async (email) => {
+    if (!email || email.trim() === '') {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
+    setError('');
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/appointments/email/${email}`);
+      console.log('🔍 Fetching appointments for email:', email);
+      
+      const response = await fetch(`${API_BASE_URL}/appointments/email/${encodeURIComponent(email)}`);
+      console.log('📡 Response status:', response.status);
+      
       const data = await response.json();
+      console.log('📦 Appointments data:', data);
       
       if (response.ok) {
-        setUserAppointments(data.appointments || []);
+        if (data.appointments && Array.isArray(data.appointments)) {
+          console.log('✅ Appointments found:', data.appointments.length);
+          setUserAppointments(data.appointments);
+        } else {
+          console.log('ℹ️ No appointments found');
+          setUserAppointments([]);
+        }
+      } else {
+        const errorMsg = data.error || 'Failed to fetch appointments';
+        console.error('❌ Fetch appointments error:', errorMsg);
+        setError(errorMsg);
+        setUserAppointments([]);
       }
     } catch (err) {
-      console.error('Error fetching appointments:', err);
+      console.error('❌ Error fetching appointments:', err);
+      setError(`Failed to fetch appointments: ${err.message}`);
+      setUserAppointments([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ FIXED: Cancel appointment
   const cancelAppointment = async (appointmentId) => {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
 
     setLoading(true);
+    setError('');
+    
     try {
+      console.log('🗑️ Cancelling appointment:', appointmentId);
+      
       const response = await fetch(`${API_BASE_URL}/appointments/${appointmentId}/cancel`, {
         method: 'POST',
         headers: {
@@ -207,26 +319,35 @@ export default function MedicareBookingSystem() {
         }
       });
 
+      console.log('📡 Cancel response status:', response.status);
+      
       const data = await response.json();
+      console.log('📦 Cancel response data:', data);
 
-      if (response.ok) {
-        setSuccess('Appointment cancelled successfully');
+      if (response.ok && data.success) {
+        setSuccess('✅ Appointment cancelled successfully');
+        
+        // Refresh appointments list
         if (patientData.email) {
-          fetchUserAppointments(patientData.email);
+          await fetchUserAppointments(patientData.email);
         }
+        
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(data.error || 'Failed to cancel appointment');
+        const errorMsg = data.error || 'Failed to cancel appointment';
+        console.error('❌ Cancel failed:', errorMsg);
+        setError(errorMsg);
       }
     } catch (err) {
-      setError('Failed to cancel appointment. Please try again.');
-      console.error('Error:', err);
+      console.error('❌ Cancel error:', err);
+      setError(`Failed to cancel appointment: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const selectDoctor = (doctor) => {
+    console.log('👨‍⚕️ Selected doctor:', doctor);
     setSelectedDoctor(doctor);
     setCurrentView('booking');
     setSelectedDate('');
@@ -236,6 +357,7 @@ export default function MedicareBookingSystem() {
   };
 
   const handleDateChange = (date) => {
+    console.log('📅 Date selected:', date);
     setSelectedDate(date);
     setSelectedSlot(null);
     if (selectedDoctor && date) {
@@ -264,7 +386,7 @@ export default function MedicareBookingSystem() {
       zIndex: 1000,
     },
     headerContainer: {
-      maxWidth: '1400px',
+      maxWidth: '1700px',
       margin: '0 auto',
       padding: isMobile ? '0 20px' : '0 40px',
     },
@@ -589,6 +711,7 @@ export default function MedicareBookingSystem() {
       fontSize: '15px',
       marginBottom: '20px',
       transition: 'border-color 0.3s',
+      boxSizing: 'border-box',
     },
     slotGrid: {
       display: 'grid',
@@ -731,7 +854,6 @@ export default function MedicareBookingSystem() {
       {/* HOME VIEW */}
       {currentView === 'home' && (
         <>
-          {/* Hero Section */}
           <section style={styles.heroSection}>
             <div style={styles.heroContainer}>
               <div style={styles.heroGrid}>
@@ -762,7 +884,6 @@ export default function MedicareBookingSystem() {
             </div>
           </section>
 
-          {/* How It Works */}
           <section style={{...styles.section, backgroundColor: 'white'}}>
             <div style={styles.sectionContainer}>
               <h2 style={styles.sectionTitle}>A step-by-step guide to build an on-demand appointment for patients</h2>
@@ -795,7 +916,6 @@ export default function MedicareBookingSystem() {
             </div>
           </section>
 
-          {/* Specialties */}
           <section style={{...styles.section, backgroundColor: '#f9fafb'}}>
             <div style={styles.sectionContainer}>
               <h2 style={styles.sectionTitle}>Clinic and Specialities</h2>
@@ -814,7 +934,6 @@ export default function MedicareBookingSystem() {
             </div>
           </section>
 
-          {/* Health Feed */}
           <section style={{...styles.section, backgroundColor: 'white'}}>
             <div style={styles.sectionContainer}>
               <h2 style={styles.sectionTitle}>Get Every Single Updates Here</h2>
@@ -837,7 +956,6 @@ export default function MedicareBookingSystem() {
             </div>
           </section>
 
-          {/* Footer */}
           <footer style={styles.footer}>
             <div style={styles.footerGrid}>
               <div>
@@ -896,6 +1014,15 @@ export default function MedicareBookingSystem() {
               <div style={{...styles.alert, ...styles.alertError}}>
                 <XCircle size={20} />
                 {error}
+              </div>
+            )}
+
+            {!loading && doctors.length === 0 && !error && (
+              <div style={{textAlign: 'center', padding: '80px 20px'}}>
+                <Stethoscope size={80} style={{margin: '0 auto 20px', color: '#d1d5db'}} />
+                <p style={{fontSize: '20px', color: '#6b7280', fontWeight: '500'}}>No doctors found</p>
+                <p style={{fontSize: '16px', color: '#9ca3af', marginTop: '10px'}}>Try selecting a different specialty</p>
+                <button style={{...styles.button, marginTop: '30px'}} onClick={() => setCurrentView('home')}>Back to Home</button>
               </div>
             )}
 
@@ -1161,19 +1288,6 @@ export default function MedicareBookingSystem() {
                     {appointment.status === 'confirmed' && (
                       <div style={{display: 'flex', gap: '12px', flexWrap: 'wrap'}}>
                         <button
-                          style={{...styles.button, fontSize: '14px', padding: '12px 24px'}}
-                          onClick={() => {
-                            setSelectedDoctor({
-                              doctorId: appointment.doctorId,
-                              name: appointment.doctorName,
-                              specialty: appointment.doctorSpecialty
-                            });
-                            setCurrentView('booking');
-                          }}
-                        >
-                          📅 Reschedule
-                        </button>
-                        <button
                           style={{
                             ...styles.button,
                             backgroundColor: '#dc2626',
@@ -1181,8 +1295,9 @@ export default function MedicareBookingSystem() {
                             padding: '12px 24px'
                           }}
                           onClick={() => cancelAppointment(appointment.appointmentId)}
+                          disabled={loading}
                         >
-                          ✕ Cancel Appointment
+                          {loading ? 'Cancelling...' : '✕ Cancel Appointment'}
                         </button>
                       </div>
                     )}
